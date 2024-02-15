@@ -4,7 +4,7 @@
 # author: WB Schmal
 #
 
-
+# NOTE to add your desired path to store the plots if wanted
 ### General set-up ----
 # load packages 
 library(ggplot2)
