@@ -81,3 +81,127 @@ foreach k of local fnd2 {
 
 save plan_s_aggr_raw, replace
 
+
+******* PART II - Further preprocessing
+
+cd "$data"
+use plan_s_aggr_raw, clear
+
+*** preprocess dataset
+ren openalxopen_accessoa_status oa_status
+ren openalxauthors_count auth_count
+ren authorshipsinstitutionscountry_c auth_countries
+
+* remove years 2013 and 2014 due to data anomalies
+drop if inlist(year, 2013, 2014) // 91,281 observations deleted
+
+gen oa_gold = 0
+replace oa_gold = 1 if strpos(oa_status,"gold") == 1
+gen oa_all = 0
+replace oa_all = 1 if oa_status != "closed"
+gen oa_hybrid = 0
+replace oa_hybrid = 1 if oa_status =="hybrid"
+
+gen oa_green = 0
+replace oa_green = 1 if oa_status =="green"
+
+* Solve the problem of duplicates in the dataset
+bys doi: gen count = _N // search for duplicates and identify them
+tab count
+drop count
+
+
+bys doi funder: gen hv_count = _N
+tab hv_count
+
+drop hv_count 
+bys doi funder: gen hv_count = _n
+tab hv_count
+drop if hv_count == 2 // 236 duplicates deleted
+drop hv_count
+
+
+gen publ2 = publisher
+bys publ2: gen count = _N
+tab count
+replace publ2 = "other" if count < 10 // cpuld be varied
+
+* generate encoded vars for factor variables in regs
+encode funder, gen(fund)
+encode publ2, gen(publ_2)
+
+
+* gen treatment variables
+* announcement date Plan S: September 2018
+* Launch date for implementing  Plan S-aligned OA policy: 1 January 2021
+	*Problem: UKRI only joined on 1 April 2022
+	* See https://www.coalition-s.org/plan-s-funders-implementation/
+* add NCI and adjust HHMI
+
+cap drop T treat t_treat excl
+gen T = 1 if year >= 2021 
+replace T = 0 if T ==.
+replace T = 0 if year == 2021 & (funder == "ukri" | funder == "hhmi")
+replace T = 0 if year == 2022 & month <= 3 & funder == "ukri"
+
+*replace T = 0 if year == 2018 & month <= 9  // 1 month in addition >> may be varied
+
+gen treat = .
+foreach fund in "fwf" "nwo" "ncn" "ukri" "hhmi" {  // treatment group
+    replace treat = 1 if funder == "`fund'"
+}
+foreach fund in "anid" "MBIE" "china" { 	// control group
+    replace treat = 0 if funder == "`fund'"
+}
+gen excl = 0
+foreach fund in "dfg" "fwo_flanders" "nci" {
+	replace excl = 1 if funder == "`fund'" // DOUBLE CHECK
+}	
+replace treat = . if excl == 1
+
+gen t_treat = T * treat	 // 22,215 missing values (Dec 7)
+	
+* verify
+tab funder if treat == 0
+tab funder if treat == 1
+tab funder if treat == .	
+	
+*** descriptive statistics ***
+tab funder, sort // 85% China 	
+tab year	
+tab oa_status, sort
+tab oa_all
+unique issn // 15,177
+unique publisher // 427
+unique publ2  // 194
+su auth_count // very few obs identified, may harm regressions >> leave out
+tab t_treat
+tab t_treat year
+tab treat year
+tab treat t_treat
+
+tab orgs
+
+gen treat_comp = treat
+replace treat_comp = 10 if treat_comp == .
+replace treat_comp = .  if treat_comp == 0
+replace treat_comp = 0  if treat_comp == 10
+gen t_treat_comp = T * treat_comp	 //
+
+* Finalize and save final dataset to run regressions with
+drop authorshipsauthordisplay_name corresponding_authorsauthordispl
+drop corresponding_authorsinstitution auth_countries
+
+drop orgs
+compress
+
+count // 2,575,427 obs observations in toal 
+cd "$data"	
+save plan_s.dta, replace	
+
+tab t_treat if funder == "ukri"
+tab t_treat year if funder == "ukri"
+tab t_treat year if funder == "hhmi"
+tab t_treat year
+tab t_treat funder
+tab t_treat_comp  funder
