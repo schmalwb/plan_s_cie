@@ -205,3 +205,456 @@ tab t_treat year if funder == "hhmi"
 tab t_treat year
 tab t_treat funder
 tab t_treat_comp  funder
+
+
+*********************************************************
+
+* * *    R E G R E S S I O N     A N A L Y S I S    * * *
+
+*********************************************************
+cd "$data"
+use plan_s, clear
+
+su oa_all, d
+su oa_gold, d
+tab funder if treat_comp == 0
+tab funder treat_comp
+tab funder treat
+tab funder, gen(fd)
+tab funder year
+
+tab funder if treat_comp !=.
+tab funder if treat !=.
+encode funder, gen(fund_en)
+tab funder fund_en
+
+foreach type in "green" "gold" "hybrid" {
+	gen excl_non_`type' = 0
+	replace excl_non_`type' = 1 if oa_all == 1 & oa_`type' == 0
+	tab oa_status  if excl_non_`type' != 1
+}
+
+**
+/*
+On which level should we cluster?
+journal (often done) or funder: point of treatment
+BUT low number of clusters: Distortion!!
+*/
+
+***  POOLED REGRESSION (NOT PAIRWISE)  ***
+
+*** Std Errors clustered on journal level
+gen treat_cont = treat
+gen t_treat_cont = t_treat				
+	
+foreach type in "all" "gold" "hybrid" {
+	mat results = J(1, 5, .)
+	foreach k in "cont" "comp" {
+			reg oa_`type' T treat_`k' t_treat_`k', vce(cluster issn)
+		
+			scalar coef = _b[t_treat_`k']
+			scalar se = _se[t_treat_`k']
+			
+			// Calculate 95% confidence intervals
+			scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+			scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+			
+			// Calculate 99% confidence intervals
+			scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+			scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+			
+			// Append coefficients and confidence intervals to the matrix
+			matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+			matrix results = results \ new_results
+	}
+	mat li results	
+}
+	
+*** for exclusive Gold OA vs CA comparison
+mat results = J(1, 5, .)
+foreach k in "cont" "comp" {
+	reg oa_gold T treat_`k' t_treat_`k', vce(cluster issn), if excl_non_gold != 1
+
+	scalar coef = _b[t_treat_`k']
+	scalar se = _se[t_treat_`k']
+	
+	// Calculate 95% confidence intervals
+	scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+	scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+	
+	// Calculate 99% confidence intervals
+	scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+	scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+	
+	// Append coefficients and confidence intervals to the matrix
+	matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+	matrix results = results \ new_results
+}
+mat li results	
+
+
+*** for exclusive Hybrid OA vs CA comparison
+mat results = J(1, 5, .)
+foreach k in "cont" "comp" {
+	reg oa_hybrid T treat_`k' t_treat_`k', vce(cluster issn), if excl_non_hybrid != 1
+
+	scalar coef = _b[t_treat_`k']
+	scalar se = _se[t_treat_`k']
+	
+	// Calculate 95% confidence intervals
+	scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+	scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+	
+	// Calculate 99% confidence intervals
+	scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+	scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+	
+	// Append coefficients and confidence intervals to the matrix
+	matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+	matrix results = results \ new_results
+}
+mat li results	
+
+
+
+*** for exclusive Green OA vs CA comparison
+mat results = J(1, 5, .)
+foreach k in "cont" "comp" {
+	reg oa_green T treat_`k' t_treat_`k', vce(cluster issn), if excl_non_green != 1
+
+	scalar coef = _b[t_treat_`k']
+	scalar se = _se[t_treat_`k']
+	
+	// Calculate 95% confidence intervals
+	scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+	scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+	
+	// Calculate 99% confidence intervals
+	scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+	scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+	
+	// Append coefficients and confidence intervals to the matrix
+	matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+	matrix results = results \ new_results
+}
+mat li results	
+
+*********************************************************
+
+*				 Pairwise Comparisons					*
+
+*********************************************************
+* always excluding other types of open access (except for "oa_all")
+gen treat_pair = .
+gen t_treat_pair = .
+
+
+*** ALL OA TYPES AGAINST CLOSED ACCESS
+*** Main control Group
+// Create an empty matrix to store regression results for t_treat_pair
+
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment group
+    foreach control_fund in "anid" "MBIE" "china" {  // control group
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        qui reg oa_all T treat_pair t_treat_pair, vce(cluster issn)
+        
+        // Store coefficient for t_treat_pair in the scalar
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+        
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+
+// Display the matrix of coefficients and confidence intervals
+mat li results
+
+
+****
+* Comparison Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment group
+    foreach control_fund in "dfg" "fwo_flanders" "nci" {  // control group
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        reg oa_all T treat_pair t_treat_pair, vce(cluster issn)
+        
+        // Store coefficient and confidence intervals for t_treat_pair in the matrix
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+		
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+
+// Display coefficients and confidence intervals for t_treat_pair for each fund vs fund_control pair
+mat li results
+
+
+*** ONLY >gold OA< AGAINST CLOSED ACCESS
+
+cap drop treat_pair t_treat_pair
+
+gen treat_pair = .
+gen t_treat_pair = .
+
+*** Main control Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment group
+    foreach control_fund in "anid" "MBIE" "china" {  // control group
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        reg oa_gold T treat_pair t_treat_pair, vce(cluster issn), if excl_non_gold != 1
+        
+        // Store coefficient for t_treat_pair in the scalar
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+        
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+**** Comparison Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment
+    foreach control_fund in "dfg" "fwo_flanders" "nci" {  // comparison
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        qui reg oa_gold T treat_pair t_treat_pair, vce(cluster issn), if excl_non_gold != 1
+        
+        // Store coefficient and confidence intervals for t_treat_pair in the matrix
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+		
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+
+*** ONLY >hybrid OA< AGAINST CLOSED ACCESS
+
+cap drop treat_pair t_treat_pair
+
+gen treat_pair = .
+gen t_treat_pair = .
+
+
+*** Main control Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment group
+    foreach control_fund in "anid" "MBIE" "china" {  // control group
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        reg oa_hybrid T treat_pair t_treat_pair, vce(cluster issn), if excl_non_hybrid != 1
+        
+        // Store coefficient for t_treat_pair in the scalar
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+        
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+**** Comparison Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment
+    foreach control_fund in "dfg" "fwo_flanders" "nci" {  // comparison
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        qui reg oa_hybrid T treat_pair t_treat_pair, vce(cluster issn), if excl_non_hybrid != 1
+        
+        // Store coefficient and confidence intervals for t_treat_pair in the matrix
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+		
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+****
+*** ONLY >green OA< AGAINST CLOSED ACCESS
+****
+
+cap drop treat_pair t_treat_pair
+
+gen treat_pair = .
+gen t_treat_pair = .
+
+
+*** Main control Group
+mat results = J(1, 5, .)
+
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment group
+    foreach control_fund in "anid" "MBIE" "china" {  // control group
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        reg oa_green T treat_pair t_treat_pair, vce(cluster issn), if excl_non_green != 1
+        
+        // Store coefficient for t_treat_pair in the scalar
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+        
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+**** Comparison Group
+mat results = J(1, 5, .)
+foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment
+    foreach control_fund in "dfg" "fwo_flanders" "nci" {  // comparison
+        drop treat_pair t_treat_pair
+        gen treat_pair = .
+        replace treat_pair = 1 if funder == "`treat_fund'"
+        replace treat_pair = 0 if funder == "`control_fund'"
+        gen t_treat_pair = T * treat_pair
+        qui reg oa_green T treat_pair t_treat_pair, vce(cluster issn), if excl_non_green != 1
+        
+        // Store coefficient and confidence intervals for t_treat_pair in the matrix
+        scalar coef = _b[t_treat_pair]
+        scalar se = _se[t_treat_pair]
+		
+        // Calculate 95% confidence intervals
+        scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+        scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+        
+        // Calculate 99% confidence intervals
+        scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+        scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+        
+        // Append coefficients and confidence intervals to the matrix
+        matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+        matrix results = results \ new_results
+    }
+}
+mat li results
+
+
+*********************************************************
+
+* * *      	 Additional Descriptive Statistics      * * *
+
+*********************************************************
+
+
+* pre/post lists by OA status and funder
+
+
+replace funder = "mbie" if funder == "MBIE"
+replace funder = "nsfc" if funder == "china"
+replace funder = "fwo" if funder == "fwo_flanders"
+
+
+replace oa_status = "z_closed" if oa_status == "closed"
+local funders = "anid dfg fwf fwo hhmi mbie nci ncn nsfc nwo ukri"
+foreach k of local funders {
+	di "This is funder `k'"
+	tab oa_status T if funder == "`k'"
+	di "This was funder `k'"
+}
+
+tab oa_status T // all funders together
+
+
