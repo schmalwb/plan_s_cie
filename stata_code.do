@@ -1,11 +1,9 @@
 ***
 /*
-Evaluation of Plan S
-
+Counterfactual Impact Evaluation of Plan S by cOAlition S
 A joint project of scidecode GbR and W. Benedikt Schmal
 WP2 - Counterfactual Impact Evaluation
 Author: W. Benedikt Schmal
-
 */
 
 
@@ -19,7 +17,7 @@ global data  = "YOUR PATH\data"
 global plots = "YOUR PATH\plots"
 
 
-**** DATA PREPARATION ****
+**** Part I - DATA PREPARATION/AGGREGATION ****
 * Import datasets
 cd "$data"
 * Prepare individual datasets
