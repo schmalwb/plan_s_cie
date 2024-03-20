@@ -588,5 +588,61 @@ ggplot(data, aes(x = as.factor(1:nrow(data)), y = Estimate, color = factor(Group
 ggsave(filename = "pairwise_comparison_greenoa_comp.png", plot = last_plot(), path = "", scale = 1, dpi = 600)
 
 ################################################################################
+
+#### Pooled regressions WITHIN OA
+# relative change of one OA type relative to the others
+# >> excluding restricted access publications
+
+# gold - hybrid - green
+
+data <- tribble(
+  ~Group, ~Coefficient, ~Estimate, ~CI_Lower_95, ~CI_Upper_95, ~CI_Lower_99, ~CI_Upper_99,
+  1, "r1",  -.02625636,  -.07810204,   .02558933,  -.09439685,   .04188414,
+  1, "r1",  -.00895955,  -.03323397,   .01531488,  -.04086343,   .02294434,
+  2, "r1",   .10808898,   .07952807,   .13664989,   .07055153,   .14562643,
+  2, "r1",  -.02817421,    -.049079,  -.00726942,  -.05564939, -.00069903,
+  3, "r1",	-.08527349,	-.10717778,	-.06336921,	-.11406217,	-.05648481,
+  3, "r1",	-.00384508,	-.01990132,	.01221117,	-.02494781,	.01725765
+)
+
+
+# Rename groups
+data$Group <- factor(data$Group, levels = c(1, 2, 3), labels = c("Gold", "Hybrid", "Green"))
+
+# 1 Control Group
+getNewCoefficient3 <- function(row) {
+  if (row %% 2 == 1) {
+    return("Control")
+  } else {
+    return("Comparison")
+  }
+}
+
+data$Coefficient <- sapply(1:nrow(data), getNewCoefficient3)
+
+ggplot(data, aes(x = as.factor(1:nrow(data)), y = Estimate, color = factor(Group))) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(ymin = CI_Lower_99, ymax = CI_Upper_99), 
+                position = position_dodge(width = 0.5), 
+                width = 0.3,  linewidth = .8, alpha = 0.5) +  # Set alpha for 99% CI
+  geom_errorbar(aes(ymin = CI_Lower_95, ymax = CI_Upper_95), 
+                position = position_dodge(width = 0.5), 
+                width = 0.2, linewidth = .9) +  # 95% CI with full opacity
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Pooled Comparison Among Open Access Flavors",
+    subtitle = "Change among Plan S funders relative to others (without restricted access)",
+   x = "",
+    y = "Point Coefficients",
+    color = "Relative to:"
+  ) +
+  theme_bw() +  ylim(-0.155, 0.155) +
+  theme(legend.position = "bottom") +
+  scale_x_discrete(labels = data$Coefficient)
+ggsave(filename = "pooled_oa_flavors.png", plot = last_plot(), path = "", scale = 1, dpi = 600)
+
+###############################################################################
+
+
 #     E N D   O F   S C R I P T     
 
