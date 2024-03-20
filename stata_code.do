@@ -631,6 +631,33 @@ foreach treat_fund in "fwf" "hhmi" "ncn" "nwo" "ukri" {  // treatment
 }
 mat li results
 
+*********************************************************
+* WITHIN OPEN ACCESS computations
+* look at changes in the likelihood of one (gold, hybrid, green) OA type relative to the others 
+
+foreach type in "gold" "hybrid" "green"{
+	mat results = J(1, 5, .)
+	foreach k in "cont" "comp" {
+			reg oa_`type' T treat_`k' t_treat_`k' if oa_status != "closed", vce(cluster issn)
+		
+			scalar coef = _b[t_treat_`k']
+			scalar se = _se[t_treat_`k']
+			
+			// Calculate 95% confidence intervals
+			scalar lower_ci_95 = coef - invttail(e(df_r), 0.025) * se
+			scalar upper_ci_95 = coef + invttail(e(df_r), 0.025) * se
+			
+			// Calculate 99% confidence intervals
+			scalar lower_ci_99 = coef - invttail(e(df_r), 0.005) * se
+			scalar upper_ci_99 = coef + invttail(e(df_r), 0.005) * se
+			
+			// Append coefficients and confidence intervals to the matrix
+			matrix new_results = coef, lower_ci_95, upper_ci_95, lower_ci_99, upper_ci_99
+			matrix results = results \ new_results
+	}
+	mat li results	
+}
+	
 
 *********************************************************
 
@@ -650,11 +677,14 @@ replace funder = "fwo" if funder == "fwo_flanders"
 replace oa_status = "z_closed" if oa_status == "closed"
 local funders = "anid dfg fwf fwo hhmi mbie nci ncn nsfc nwo ukri"
 foreach k of local funders {
-	di "This is funder `k'"
-	tab oa_status T if funder == "`k'"
+	di "The next funder is `k'"
+	tab oa_status T if funder == "`k'", col
+	tab2xl oa_status T using "funder_tab_`k'" if funder == "`k'", col(1) row(1) replace
 	di "This was funder `k'"
 }
 
-tab oa_status T // all funders together
+tab oa_status T, col // all funders together
+tab2xl oa_status T using "funder_tab_ALL", col(1) row(1) replace
+
 
 
